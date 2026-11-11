@@ -1,34 +1,63 @@
 // Organizer page logic.
 const $ = (id) => document.getElementById(id);
-const FIELDS = ["title", "body", "startDate", "startTime", "endDate", "endTime", "location", "map", "hostName", "hostPhone", "cc", "baseUrl"];
+const FIELDS = ["title", "greeting", "body", "closing", "startDate", "startTime", "endDate", "endTime", "location", "map", "hostName", "hostPhone", "cc", "baseUrl"];
 const STORE_KEY = "wa-invites-v1";
+const PHOTO_KEY = "wa-invites-photo";
 
 let guests = []; // { name, raw, phone, sent }
+let opts = { style: "classic", layout: "clean", sendMode: "text", theme: "emerald", personalize: true };
+let photo = null; // HTMLImageElement or null
 
 // ---------- Persistence (per-browser convenience only) ----------
 function save() {
   try {
-    const data = { guests };
+    const data = { guests, opts };
     FIELDS.forEach((f) => (data[f] = $(f).value));
     localStorage.setItem(STORE_KEY, JSON.stringify(data));
   } catch (_) {}
 }
 
 function load() {
-  try {
-    const data = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
-    if (!data) return;
-    // Older versions stored "start"/"end" as one date-time value (2026-12-05T12:00).
-    for (const k of ["start", "end"]) {
-      if (typeof data[k] === "string" && data[k].includes("T") && !data[k + "Date"]) {
-        [data[k + "Date"], data[k + "Time"]] = data[k].split("T");
-      }
+  let data = null;
+  try { data = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch (_) {}
+  if (!data) { applyStyle("classic", true); return; }
+  // Older versions stored "start"/"end" as one date-time value (2026-12-05T12:00).
+  for (const k of ["start", "end"]) {
+    if (typeof data[k] === "string" && data[k].includes("T") && !data[k + "Date"]) {
+      [data[k + "Date"], data[k + "Time"]] = data[k].split("T");
     }
-    FIELDS.forEach((f) => {
-      if (typeof data[f] === "string") $(f).value = data[f];
-    });
-    guests = Array.isArray(data.guests) ? data.guests : [];
+  }
+  FIELDS.forEach((f) => { if (typeof data[f] === "string") $(f).value = data[f]; });
+  guests = Array.isArray(data.guests) ? data.guests : [];
+  if (data.opts) opts = { ...opts, ...data.opts };
+  // Older versions had no greeting/closing: keep a custom message as-is, otherwise use the Classic wording.
+  if (data.greeting === undefined) {
+    if (isStockText("body", data.body)) applyStyle("classic", true);
+    else { $("greeting").value = ""; $("closing").value = ""; }
+  }
+}
+
+function loadPhoto() {
+  try {
+    const url = localStorage.getItem(PHOTO_KEY);
+    if (url) setPhotoFromUrl(url, false);
   } catch (_) {}
+}
+
+// ---------- Styles ----------
+function applyStyle(key, force) {
+  const s = STYLES[key];
+  if (!s) return;
+  const edited = ["greeting", "body", "closing"].some((f) => !isStockText(f, $(f).value));
+  if (!force && edited && !confirm(`Replace your greeting, message and closing with the ${s.label} wording?`)) {
+    opts.style = key; // keep their text, but use the style's emojis and theme
+  } else {
+    $("greeting").value = s.greeting;
+    $("body").value = s.body;
+    $("closing").value = s.closing;
+  }
+  opts.style = key;
+  opts.theme = s.theme;
 }
 
 // ---------- Event ----------
@@ -61,33 +90,59 @@ function isLocalBase() {
   return /^(file:|https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|[^/]+\.local)\b)/i.test(baseUrl());
 }
 
-function inviteUrl(ev, guestName) {
-  const payload = { ...ev, b: personalize(ev.b, guestName) };
-  const g = guestName ? `&g=${encodeURIComponent(guestName)}` : "";
-  return `${baseUrl()}invite.html#e=${encodeEvent(payload)}${g}`;
+function firstName(name) {
+  return (name || "").trim().split(/\s+/)[0] || "";
 }
 
 function personalize(text, name) {
-  const first = (name || "").trim().split(/\s+/)[0] || "there";
-  return (text || "").replace(/\{name\}/gi, first);
+  return (text || "").replace(/\{name\}/gi, firstName(name) || "there");
+}
+
+function inviteUrl(ev, guestName) {
+  const greet = personalize($("greeting").value.trim(), guestName);
+  const body = [greet, personalize(ev.b, guestName)].filter(Boolean).join("\n");
+  const payload = { ...ev, b: body };
+  const g = guestName ? `&g=${encodeURIComponent(guestName)}` : "";
+  return `${baseUrl()}invite.html#e=${encodeEvent(payload)}${g}`;
 }
 
 function buildMessage(guest) {
   const ev = currentEvent();
   const name = guest ? guest.name : "";
-  const lines = [];
-  if (ev.t) lines.push(`*${ev.t}*`, "");
-  if (ev.b) lines.push(personalize(ev.b, name), "");
-  if (ev.s) lines.push(`🗓️ *When:* ${formatWhen(ev.s, ev.e)}`);
-  if (ev.l) lines.push(`📍 *Where:* ${ev.l}`);
-  const map = mapUrl(ev);
-  if (map) lines.push(`🗺️ *Map:* ${map}`);
-  if (ev.s) lines.push(`📅 *Add to Google Calendar:* ${googleCalendarUrl({ ...ev, b: personalize(ev.b, name) })}`);
-  lines.push("");
-  lines.push(`✅ *RSVP & add to Apple/Outlook calendar:* ${inviteUrl(ev, name)}`);
-  if (ev.h) lines.push(`Or just reply *YES*, *NO* or *MAYBE* to this message.`);
-  if (ev.n) lines.push("", `— ${ev.n}`);
-  return lines.join("\n");
+  const style = STYLES[opts.style] || STYLES.classic;
+  const [d1, d2] = style.deco;
+  const greeting = personalize($("greeting").value.trim(), name);
+  const body = personalize(ev.b, name);
+  const closing = personalize($("closing").value.trim(), name);
+  const parts = ev.s ? formatParts(ev.s, ev.e) : null;
+  const invite = inviteUrl(ev, name);
+  const L = [];
+
+  if (ev.t) L.push([d1, `*${ev.t}*`, d2].filter(Boolean).join(" "), "");
+  if (greeting) L.push(greeting);
+  if (body) L.push(body);
+  if (greeting || body) L.push("");
+
+  if (opts.layout === "clean") {
+    if (parts) L.push(`> 🗓️ *${parts.date}*`, `> 🕛 ${parts.time}`);
+    if (ev.l) L.push(`> 📍 ${ev.l}`);
+    if (parts || ev.l) L.push("");
+    L.push("👉 *RSVP, map & add to calendar:*", invite);
+  } else {
+    if (parts) L.push(`🗓️ *Date:* ${parts.date}`, `🕛 *Time:* ${parts.time}`);
+    if (ev.l) L.push(`📍 *Venue:* ${ev.l}`);
+    if (parts || ev.l) L.push("");
+    L.push(`✅ *RSVP & add to calendar:*`, invite, "");
+    const map = mapUrl(ev);
+    if (map) L.push(`🗺️ *Map:*`, map, "");
+    if (ev.s) L.push(`📅 *Google Calendar:*`, googleCalendarUrl({ ...ev, b: body }));
+  }
+  if (ev.h) L.push("_Or simply reply YES, NO or MAYBE._");
+  if (closing || ev.n) L.push("");
+  if (closing) L.push(closing);
+  if (ev.n) L.push(`— ${ev.n}`);
+  // Tidy up doubled blank lines.
+  return L.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 function validate() {
@@ -98,6 +153,75 @@ function validate() {
   if (!$("startTime").value) problems.push("a start time");
   if (!ev.h) problems.push("your WhatsApp number");
   return problems;
+}
+
+// ---------- Card ----------
+const cardCache = new Map(); // key -> Blob
+
+function cardOptions(guest) {
+  return {
+    ev: currentEvent(),
+    guestName: guest ? guest.name : "",
+    themeKey: opts.theme,
+    photo,
+    personalize: opts.personalize,
+    deco: (STYLES[opts.style] || STYLES.classic).deco,
+  };
+}
+
+function cardKey(guest) {
+  return opts.personalize && guest ? firstName(guest.name) : "*";
+}
+
+async function getCardBlob(guest) {
+  const key = cardKey(guest);
+  if (cardCache.has(key)) return cardCache.get(key);
+  const c = document.createElement("canvas");
+  renderCard(c, cardOptions(guest));
+  const blob = await canvasToBlob(c, "image/png");
+  cardCache.set(key, blob);
+  return blob;
+}
+
+function cardFileName(guest) {
+  const base = (currentEvent().t || "invitation").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-");
+  const who = opts.personalize && guest && guest.name ? "-" + firstName(guest.name) : "";
+  return `${base}${who}.png`;
+}
+
+function downloadBlob(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+function setPhotoFromUrl(url, persist) {
+  const img = new Image();
+  img.onload = () => {
+    photo = img;
+    if (persist) { try { localStorage.setItem(PHOTO_KEY, url); } catch (_) {} }
+    render();
+  };
+  img.src = url;
+}
+
+function handlePhoto(file) {
+  if (!file) return;
+  const img = new Image();
+  img.onload = () => {
+    // Shrink large photos so they're quick to draw and fit in browser storage.
+    const scale = Math.min(1, 1400 / Math.max(img.width, img.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.width * scale);
+    c.height = Math.round(img.height * scale);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(img.src);
+    setPhotoFromUrl(c.toDataURL("image/jpeg", 0.85), true);
+  };
+  img.src = URL.createObjectURL(file);
 }
 
 // ---------- Contacts import ----------
@@ -217,7 +341,15 @@ async function pickContacts() {
 }
 
 // ---------- Sending ----------
-function sendTo(i) {
+const isPhone = () => matchMedia("(pointer: coarse)").matches;
+
+function markSent(g) {
+  g.sent = true;
+  render();
+  save();
+}
+
+async function sendTo(i) {
   const problems = validate();
   if (problems.length) {
     alert(`Please add ${problems.join(", ")} first.`);
@@ -225,10 +357,32 @@ function sendTo(i) {
   }
   const g = guests[i];
   if (!g || !g.phone) return;
-  window.open(waLink(g.phone, buildMessage(g)), "_blank", "noopener");
-  g.sent = true;
-  render();
-  save();
+  const text = buildMessage(g);
+
+  if (opts.sendMode !== "card") {
+    window.open(waLink(g.phone, text), "_blank", "noopener");
+    markSent(g);
+    return;
+  }
+
+  const blob = await getCardBlob(g);
+  const file = new File([blob], cardFileName(g), { type: "image/png" });
+  if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
+
+  if (isPhone() && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], text });
+      markSent(g);
+    } catch (err) {
+      if (err.name === "NotAllowedError") alert("Tap Send again to open the Share menu.");
+      // AbortError: they closed the Share menu, so leave it unsent.
+    }
+    return;
+  }
+  // Computer (or no file sharing): download the card and open the chat with the text.
+  downloadBlob(blob, cardFileName(g));
+  window.open(waLink(g.phone, text), "_blank", "noopener");
+  markSent(g);
 }
 
 function sendNext() {
@@ -241,7 +395,65 @@ function sendNext() {
 }
 
 // ---------- Rendering ----------
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// Render WhatsApp formatting (*bold*, _italic_, ~strike~, > quote, links) for the preview bubble.
+function waToHtml(text) {
+  const inline = (s) =>
+    escapeHtml(s)
+      .replace(/(https?:\/\/[^\s]+)/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u.length > 60 ? u.slice(0, 57) + "…" : u}</a>`)
+      .replace(/(^|[\s(])\*([^*\n]+)\*(?=$|[\s.,!?)])/g, "$1<strong>$2</strong>")
+      .replace(/(^|[\s(])_([^_\n]+)_(?=$|[\s.,!?)])/g, "$1<em>$2</em>")
+      .replace(/(^|[\s(])~([^~\n]+)~(?=$|[\s.,!?)])/g, "$1<s>$2</s>");
+  const out = [];
+  let quote = [];
+  const flush = () => { if (quote.length) { out.push(`<span class="waq">${quote.join("<br>")}</span>`); quote = []; } };
+  for (const line of text.split("\n")) {
+    if (line.startsWith("> ")) quote.push(inline(line.slice(2)));
+    else { flush(); out.push(inline(line) + "<br>"); }
+  }
+  flush();
+  return out.join("");
+}
+
+let bubbleTimer = null;
+
+function renderStyleControls() {
+  $("styleChips").innerHTML = "";
+  Object.entries(STYLES).forEach(([key, s]) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("role", "radio");
+    b.setAttribute("aria-checked", String(opts.style === key));
+    b.textContent = [s.deco[0], s.label].filter(Boolean).join(" ");
+    b.onclick = () => { applyStyle(key, false); cardCache.clear(); render(); save(); };
+    $("styleChips").appendChild(b);
+  });
+  $("themeSwatches").innerHTML = "";
+  Object.entries(THEMES).forEach(([key, t]) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("role", "radio");
+    b.setAttribute("aria-checked", String(opts.theme === key && !photo));
+    b.setAttribute("aria-label", t.label);
+    b.title = photo ? "Remove the photo to use a theme" : t.label;
+    b.disabled = !!photo;
+    b.style.background = `linear-gradient(135deg, ${t.bg[0]}, ${t.bg[1]})`;
+    b.onclick = () => { opts.theme = key; cardCache.clear(); render(); save(); };
+    $("themeSwatches").appendChild(b);
+  });
+  document.querySelectorAll('input[name="layout"]').forEach((r) => (r.checked = r.value === opts.layout));
+  document.querySelectorAll('input[name="sendMode"]').forEach((r) => (r.checked = r.value === opts.sendMode));
+  $("personalize").checked = opts.personalize;
+  $("photoClear").hidden = !photo;
+}
+
 function render() {
+  cardCache.clear();
+  renderStyleControls();
+
   const tbody = $("guestRows");
   tbody.innerHTML = "";
   if (!guests.length) {
@@ -273,9 +485,19 @@ function render() {
     tbody.appendChild(tr);
   });
 
-  const first = guests.find((g) => !g.sent && g.phone) || guests[0];
-  $("previewName").textContent = first && first.name ? first.name : "a guest";
-  $("preview").textContent = buildMessage(first || { name: "" });
+  const first = guests.find((g) => !g.sent && g.phone) || guests[0] || { name: "Aisha" };
+  $("previewName").textContent = first.name || "a guest";
+  $("preview").innerHTML = waToHtml(buildMessage(first));
+
+  // Card preview + WhatsApp bubble
+  renderCard($("cardCanvas"), cardOptions(first));
+  const cardMode = opts.sendMode === "card";
+  $("linkCard").hidden = cardMode;
+  $("bubbleCard").hidden = !cardMode;
+  if (cardMode) {
+    clearTimeout(bubbleTimer);
+    bubbleTimer = setTimeout(() => ($("bubbleCard").src = $("cardCanvas").toDataURL("image/jpeg", 0.7)), 200);
+  }
 
   const valid = guests.filter((g) => g.phone).length;
   const sent = guests.filter((g) => g.sent).length;
@@ -283,17 +505,43 @@ function render() {
   $("baseWarn").hidden = !isLocalBase();
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
-
 // ---------- Wire up ----------
 load();
+loadPhoto();
 FIELDS.forEach((f) => $(f).addEventListener("input", () => { render(); save(); }));
 $("cc").addEventListener("change", () => {
   guests.forEach((g) => (g.phone = normalizePhone(g.raw, $("cc").value)));
   render(); save();
 });
+document.querySelectorAll('input[name="layout"]').forEach((r) =>
+  r.addEventListener("change", () => { opts.layout = r.value; render(); save(); })
+);
+document.querySelectorAll('input[name="sendMode"]').forEach((r) =>
+  r.addEventListener("change", () => { opts.sendMode = r.value; render(); save(); })
+);
+$("personalize").addEventListener("change", (e) => { opts.personalize = e.target.checked; render(); save(); });
+$("photoBtn").onclick = () => $("photoFile").click();
+$("photoFile").onchange = (e) => { handlePhoto(e.target.files[0]); e.target.value = ""; };
+$("photoClear").onclick = () => {
+  photo = null;
+  try { localStorage.removeItem(PHOTO_KEY); } catch (_) {}
+  render();
+};
+$("dlCard").onclick = async () => {
+  const g = guests.find((x) => !x.sent && x.phone) || guests[0];
+  downloadBlob(await getCardBlob(g), cardFileName(g));
+};
+$("copyMsg").onclick = async () => {
+  const g = guests.find((x) => !x.sent && x.phone) || guests[0];
+  try {
+    await navigator.clipboard.writeText(buildMessage(g));
+    $("copyMsg").textContent = "Copied ✓";
+    setTimeout(() => ($("copyMsg").textContent = "Copy message"), 1500);
+  } catch (_) {
+    alert("Couldn't copy. Select the preview text and copy it instead.");
+  }
+};
+
 // Open the calendar / clock as soon as a date or time box is clicked.
 document.querySelectorAll("input.picker").forEach((el) =>
   el.addEventListener("click", () => { try { el.showPicker(); } catch (_) {} })
@@ -306,6 +554,7 @@ $("startDate").addEventListener("change", () => {
 });
 $("startDate").min = new Date().toISOString().slice(0, 10);
 $("endDate").min = $("startDate").value || $("startDate").min;
+
 $("pickContacts").onclick = pickContacts;
 $("uploadBtn").onclick = () => $("file").click();
 $("file").onchange = (e) => { handleFiles([...e.target.files]); e.target.value = ""; };
@@ -326,3 +575,4 @@ $("dlIcs").onclick = () => {
   downloadIcs({ ...ev, b: personalize(ev.b, "") });
 };
 render();
+ensureCardFonts().then(render);

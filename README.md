@@ -7,6 +7,13 @@ A static web app (no server, no accounts) for sending personal WhatsApp event in
 
 All event data is stored in the invite link itself, so nothing is kept on a server.
 
+## Invite options
+
+- **Message style**: Classic, Formal, Casual, Festive, Wedding or Birthday. Each fills in the greeting, message and closing (all editable), the emojis and a matching card theme.
+- **Layout**: *Clean* has one link and the details in a highlighted block. *Detailed* adds separate map and Google Calendar links.
+- **Send as**: *Text message* opens the guest's chat directly. *Card + text* makes a designed invitation image (5 themes or your own photo, optionally with the guest's name on it). On a phone it opens the Share menu, where you choose WhatsApp and then the guest. On a computer it downloads the card and opens the chat.
+- **Link preview**: WhatsApp shows a "You're Invited" preview card for the invite link (`og-image.jpg`).
+
 ## Run locally
 
 ```bash

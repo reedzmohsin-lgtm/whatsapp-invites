@@ -4,6 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>WhatsApp Event Invites</title>
+  <meta name="description" content="Create an event and send personal WhatsApp invites with calendar, map and RSVP." />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="WhatsApp Event Invites" />
+  <meta property="og:description" content="Create an event and send personal WhatsApp invites with calendar, map and RSVP." />
+  <meta property="og:image" content="https://reedzmohsin-lgtm.github.io/whatsapp-invites/og-image.jpg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -15,9 +23,6 @@
       <h2>1. Event</h2>
       <label for="title">Title</label>
       <input id="title" placeholder="Hari Raya Open House" />
-
-      <label for="body">Message <span class="hint">— use {name} to insert the guest's name</span></label>
-      <textarea id="body">Hi {name}, you're invited! It would be lovely to see you there.</textarea>
 
       <div class="row">
         <div>
@@ -48,7 +53,67 @@
     </section>
 
     <section class="card">
-      <h2>2. Host &amp; settings</h2>
+      <h2>2. Message style</h2>
+      <label>Style <span class="hint">— fills in the greeting, message and closing; you can still edit them</span></label>
+      <div class="chips" id="styleChips" role="radiogroup" aria-label="Message style"></div>
+
+      <label>Layout</label>
+      <div class="seg" role="radiogroup" aria-label="Message layout">
+        <label class="opt"><input type="radio" name="layout" value="clean" checked />
+          <span><strong>Clean</strong><small>One link, details highlighted</small></span></label>
+        <label class="opt"><input type="radio" name="layout" value="detailed" />
+          <span><strong>Detailed</strong><small>Separate map and Google Calendar links</small></span></label>
+      </div>
+
+      <label for="greeting">Greeting <span class="hint">— {name} becomes the guest's first name</span></label>
+      <input id="greeting" />
+      <label for="body">Message</label>
+      <textarea id="body"></textarea>
+      <label for="closing">Closing line</label>
+      <input id="closing" />
+    </section>
+
+    <section class="card">
+      <h2>3. Invitation card</h2>
+      <label>Send as</label>
+      <div class="seg" role="radiogroup" aria-label="Send as">
+        <label class="opt"><input type="radio" name="sendMode" value="text" checked />
+          <span><strong>Text message</strong><small>Opens the guest's chat directly</small></span></label>
+        <label class="opt"><input type="radio" name="sendMode" value="card" />
+          <span><strong>Card + text</strong><small>Designed image, sent from the Share menu</small></span></label>
+      </div>
+
+      <div class="card-editor">
+        <div class="card-preview">
+          <canvas id="cardCanvas" width="1080" height="1350" aria-label="Invitation card preview"></canvas>
+        </div>
+        <div>
+          <label>Theme</label>
+          <div class="swatches" id="themeSwatches" role="radiogroup" aria-label="Card theme"></div>
+
+          <label>Background photo <span class="hint">(optional)</span></label>
+          <div class="btns" style="margin-top:0">
+            <button type="button" id="photoBtn" class="small">Choose photo</button>
+            <button type="button" id="photoClear" class="small" hidden>Remove photo</button>
+            <input id="photoFile" type="file" accept="image/*" hidden />
+          </div>
+
+          <label class="check"><input type="checkbox" id="personalize" checked /> Put each guest's name on the card</label>
+
+          <div class="btns">
+            <button type="button" id="dlCard">Download card</button>
+          </div>
+        </div>
+      </div>
+      <p class="note" id="cardNote">
+        <strong>How card sending works:</strong> on your phone, <em>Send</em> opens the Share menu. Choose WhatsApp, then pick the guest.
+        The message is also copied, so if WhatsApp drops the text, just paste it in.
+        On a computer the card is downloaded and WhatsApp opens with the text; attach the card in the chat.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>4. Host &amp; settings</h2>
       <div class="row">
         <div>
           <label for="hostName">Your name</label>
@@ -65,19 +130,18 @@
           <input id="cc" placeholder="60" inputmode="numeric" />
         </div>
         <div>
-          <label for="baseUrl">Public site address <span class="hint">— where this app is hosted</span></label>
+          <label for="baseUrl">Public site address <span class="hint">— leave empty to use this site</span></label>
           <input id="baseUrl" placeholder="https://yourname.github.io/whatsapp-invites/" />
         </div>
       </div>
       <div id="baseWarn" class="note" hidden>
         This app is running on your own computer, so guests can't open the invite page (calendar, map and RSVP buttons) yet.
-        Put the app online (see README), enter the address above, and the invite links will work.
-        The Google Calendar and map links in the message work either way.
+        Use the online version, or enter its address above.
       </div>
     </section>
 
     <section class="card">
-      <h2>3. Guests</h2>
+      <h2>5. Guests</h2>
       <div class="btns">
         <button id="pickContacts" type="button">Pick from Contacts</button>
         <button id="uploadBtn" type="button">Upload CSV / vCard</button>
@@ -112,23 +176,34 @@
     </section>
 
     <section class="card">
-      <h2>4. Preview &amp; send</h2>
-      <p class="muted" style="margin-top:0">Preview for <strong id="previewName">the first guest</strong>:</p>
-      <div id="preview" class="preview"></div>
+      <h2>6. Preview &amp; send</h2>
+      <p class="muted" style="margin-top:0">How it looks in WhatsApp for <strong id="previewName">a guest</strong>:</p>
+      <div class="wa">
+        <div class="bubble">
+          <img id="bubbleCard" alt="Invitation card" hidden />
+          <div id="linkCard" class="linkcard">
+            <img src="og-image.jpg" alt="" />
+            <div><strong>You're Invited</strong><small>Event details · Add to calendar · RSVP</small></div>
+          </div>
+          <div id="preview" class="preview"></div>
+        </div>
+      </div>
       <div class="btns">
         <button id="sendNext" type="button" class="primary">Send to next guest</button>
+        <button id="copyMsg" type="button">Copy message</button>
         <button id="dlIcs" type="button">Download .ics</button>
         <button id="resetSent" type="button">Reset sent status</button>
       </div>
       <p class="note">
-        Each invite opens WhatsApp with the message filled in. Tap <strong>Send</strong> in WhatsApp, then come back here
-        for the next guest. To attach the calendar file as well, download the .ics and send it in the same chat.
+        WhatsApp shows a <strong>“You're Invited” preview card</strong> for the invite link. To send without it, tap ✕ on the preview in WhatsApp before sending.
       </p>
       <p id="progress" class="muted"></p>
     </section>
   </div>
 
   <script src="shared.js"></script>
+  <script src="templates.js"></script>
+  <script src="card.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

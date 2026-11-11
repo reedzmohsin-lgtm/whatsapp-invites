@@ -33,6 +33,18 @@ function formatWhen(startIso, endIso) {
     : `${day}, ${t(s)} – ${e.toLocaleDateString(undefined, { day: "numeric", month: "long" })} ${t(e)}`;
 }
 
+// Short date line + time line, e.g. { date: "Sat, 5 Dec 2026", time: "12:00 PM – 4:00 PM" }.
+function formatParts(startIso, endIso) {
+  const s = new Date(startIso);
+  const e = endIso ? new Date(endIso) : null;
+  const d = (x, year = true) =>
+    x.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", ...(year ? { year: "numeric" } : {}) });
+  const t = (x) => x.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (!e) return { date: d(s), time: t(s) };
+  if (s.toDateString() === e.toDateString()) return { date: d(s), time: `${t(s)} – ${t(e)}` };
+  return { date: `${d(s, false)} – ${d(e)}`, time: `${t(s)} – ${t(e)}` };
+}
+
 // ---------- Map ----------
 function mapUrl(ev) {
   if (ev.m && /^https?:\/\//i.test(ev.m)) return ev.m;
