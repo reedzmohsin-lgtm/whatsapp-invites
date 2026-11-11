@@ -7,6 +7,116 @@ const PHOTO_KEY = "wa-invites-photo";
 let guests = []; // { name, raw, phone, sent }
 let opts = { style: "classic", layout: "clean", sendMode: "text", theme: "emerald", personalize: true };
 let photo = null; // HTMLImageElement or null
+let attachments = []; // { id, file, url }
+
+// ---------- Extra files (kept in this browser's IndexedDB so they survive a reload) ----------
+const MAX_FILE_MB = 16; // WhatsApp's limit for photos and videos
+const idb = {
+  open() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open("wa-invites", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("attachments", { keyPath: "id" });
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+  },
+  async run(mode, fn) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const tx = db.transaction("attachments", mode);
+      const req = fn(tx.objectStore("attachments"));
+      tx.oncomplete = () => res(req && req.result);
+      tx.onerror = () => rej(tx.error);
+    });
+  },
+  all() { return this.run("readonly", (s) => s.getAll()); },
+  put(rec) { return this.run("readwrite", (s) => s.put(rec)); },
+  del(id) { return this.run("readwrite", (s) => s.delete(id)); },
+};
+
+function addAttachment(file, persist = true) {
+  const a = { id: file.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, file, url: URL.createObjectURL(file) };
+  attachments.push(a);
+  if (persist) idb.put({ id: a.id, name: file.name, type: file.type, blob: file }).catch(() => {});
+  return a;
+}
+
+function handleAttachFiles(list) {
+  const tooBig = [];
+  [...list].forEach((f) => {
+    if (f.size > MAX_FILE_MB * 1024 * 1024 && /^(image|video)\//.test(f.type)) tooBig.push(f.name);
+    addAttachment(f);
+  });
+  if (tooBig.length) toast(`Heads up: WhatsApp may not send photos or videos over ${MAX_FILE_MB} MB: ${escapeHtml(tooBig.join(", "))}`, 10000);
+  render();
+}
+
+function removeAttachment(id) {
+  const i = attachments.findIndex((a) => a.id === id);
+  if (i === -1) return;
+  URL.revokeObjectURL(attachments[i].url);
+  attachments.splice(i, 1);
+  idb.del(id).catch(() => {});
+  render();
+}
+
+async function loadAttachments() {
+  try {
+    const recs = await idb.all();
+    recs.forEach((r) => {
+      const f = new File([r.blob], r.name, { type: r.type });
+      f.id = r.id;
+      addAttachment(f, false);
+    });
+    if (recs.length) render();
+  } catch (_) {}
+}
+
+function sizeLabel(bytes) {
+  return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function fileIcon(f) {
+  if (/^image\//.test(f.type)) return "🖼️";
+  if (/^video\//.test(f.type)) return "🎬";
+  if (/^audio\//.test(f.type)) return "🎵";
+  if (/pdf/.test(f.type)) return "📄";
+  return "📎";
+}
+
+function renderAttachments() {
+  const ul = $("attachList");
+  ul.innerHTML = "";
+  attachments.forEach((a) => {
+    const li = document.createElement("li");
+    const thumb = /^image\//.test(a.file.type)
+      ? `<img src="${a.url}" alt="" />`
+      : `<span class="ficon" aria-hidden="true">${fileIcon(a.file)}</span>`;
+    li.innerHTML = `${thumb}<span class="fname">${escapeHtml(a.file.name)}<small>${sizeLabel(a.file.size)}</small></span>`;
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.className = "small";
+    rm.textContent = "Remove";
+    rm.setAttribute("aria-label", `Remove ${a.file.name}`);
+    rm.onclick = () => removeAttachment(a.id);
+    li.appendChild(rm);
+    ul.appendChild(li);
+  });
+  $("attachEmpty").hidden = attachments.length > 0;
+
+  // Files in the WhatsApp preview bubble
+  const bf = $("bubbleFiles");
+  bf.innerHTML = "";
+  attachments.forEach((a) => {
+    const d = document.createElement("div");
+    d.className = "bfile";
+    d.innerHTML = /^image\//.test(a.file.type)
+      ? `<img src="${a.url}" alt="${escapeHtml(a.file.name)}" />`
+      : `<span>${fileIcon(a.file)}</span><span class="fname">${escapeHtml(a.file.name)}<small>${sizeLabel(a.file.size)}</small></span>`;
+    bf.appendChild(d);
+  });
+  bf.hidden = !attachments.length;
+}
 
 // ---------- Persistence (per-browser convenience only) ----------
 function save() {
@@ -370,6 +480,35 @@ function markSent(g) {
   save();
 }
 
+// Everything that goes with the text: the card (in card mode) plus any extra files.
+async function filesFor(g) {
+  const files = [];
+  if (opts.sendMode === "card") files.push(new File([await getCardBlob(g)], cardFileName(g), { type: "image/png" }));
+  attachments.forEach((a) => files.push(a.file));
+  return files;
+}
+
+// Split files into ones the Share menu accepts and ones that must be attached by hand.
+function splitShareable(files) {
+  if (!navigator.canShare) return { share: [], manual: files };
+  try { if (navigator.canShare({ files })) return { share: files, manual: [] }; } catch (_) {}
+  const share = [], manual = [];
+  files.forEach((f) => { try { (navigator.canShare({ files: [f] }) ? share : manual).push(f); } catch (_) { manual.push(f); } });
+  return { share, manual };
+}
+
+const fileList = (files) => files.map((f) => `<li>${escapeHtml(f.name)}</li>`).join("");
+
+function openChatStep(g, text, html) {
+  const who = escapeHtml(firstName(g.name) || "this guest");
+  toast(`${html}<div class="btns"><button type="button" class="primary small" id="openChat">Open ${who}'s chat</button></div>`, 120000);
+  $("openChat").onclick = () => {
+    window.open(waLink(g.phone, text), "_blank", "noopener");
+    $("toast").hidden = true;
+    markSent(g);
+  };
+}
+
 async function sendTo(i) {
   const problems = validate();
   if (problems.length) {
@@ -379,85 +518,80 @@ async function sendTo(i) {
   const g = guests[i];
   if (!g || !g.phone) return;
   const text = buildMessage(g);
+  const files = await filesFor(g);
 
-  if (opts.sendMode !== "card") {
+  // Text only: open the chat with the message typed in.
+  if (!files.length) {
     window.open(waLink(g.phone, text), "_blank", "noopener");
     markSent(g);
     return;
   }
 
-  const key = cardKey(g);
+  const { share, manual } = splitShareable(files);
+  const who = escapeHtml(firstName(g.name) || "this guest");
 
-  if (isPhone() && navigator.canShare) {
-    // The Share menu must open straight from the tap, so use the card prepared in advance when we can.
-    const blob = cardCache.get(key) || (await getCardBlob(g));
-    const file = new File([blob], cardFileName(g), { type: "image/png" });
-    if (navigator.canShare({ files: [file] })) {
-      if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
-      try {
-        await navigator.share({ files: [file], text });
-        markSent(g);
-      } catch (err) {
-        if (err.name === "NotAllowedError") toast("Tap <strong>Send</strong> again to open the Share menu.");
-        // AbortError: they closed the Share menu, so leave it unsent.
+  // Phone: open the Share menu straight away with the files and the text.
+  if (isPhone() && share.length) {
+    if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
+    try {
+      await navigator.share({ files: share, text });
+      markSent(g);
+      if (manual.length) {
+        manual.forEach((f) => downloadBlob(f, f.name));
+        toast(`These files couldn't go through the Share menu, so they were downloaded. Attach them in ${who}'s chat with 📎:<ul class="steps">${fileList(manual)}</ul>`, 20000);
       }
-      return;
+    } catch (err) {
+      if (err.name === "NotAllowedError") toast("Tap <strong>Send</strong> again to open the Share menu.");
+      // AbortError: they closed the Share menu, so leave it unsent.
     }
+    return;
   }
 
-  // Computer: a WhatsApp link can only carry text, so the card has to go another way.
-  // Each option is its own button, because sharing and opening a window must start from a click.
-  const who = escapeHtml(firstName(g.name) || "this guest");
-  const blob = await getCardBlob(g);
-  const file = new File([blob], cardFileName(g), { type: "image/png" });
-  const canShareFile = !!(navigator.canShare && navigator.canShare({ files: [file] }));
-
+  // Computer: each option is its own button, because sharing and opening a window must start from a click.
+  const onlyCard = files.length === 1 && opts.sendMode === "card";
+  const what = onlyCard ? "the card" : `${files.length} file${files.length > 1 ? "s" : ""}`;
   toast(
-    `<strong>Send the card to ${who}</strong>` +
-      (canShareFile
-        ? `<ol class="steps"><li><strong>Share card to WhatsApp</strong> sends the card <em>and</em> the text together. In the Share menu choose WhatsApp, then pick ${who}.</li></ol>`
+    `<strong>Send ${what} to ${who}</strong>` +
+      (share.length
+        ? `<p class="tstep"><strong>Share to WhatsApp</strong> sends ${share.length === files.length ? "everything" : "the files it can"} <em>and</em> the text together. ` +
+          `In the Share menu choose WhatsApp, then pick ${who}. If WhatsApp isn't listed, click <em>More…</em> and turn it on.</p>`
         : "") +
-      `<ol class="steps" ${canShareFile ? 'start="2"' : ""}><li><strong>Copy card &amp; open chat</strong> opens ${who}'s chat with the text typed in. ` +
-      `Press <strong>${pasteKey()}</strong> in the chat to paste the card, send it, then send the text.</li></ol>` +
+      `<p class="tstep"><strong>${onlyCard ? "Copy card" : "Download files"} &amp; open chat</strong> opens ${who}'s chat with the text typed in, ` +
+      `then you ${onlyCard ? `paste the card with <strong>${pasteKey()}</strong>` : "attach the files with 📎"}.</p>` +
       `<div class="btns">` +
-      (canShareFile ? `<button type="button" class="primary small" id="shareCard">Share card to WhatsApp</button>` : "") +
-      `<button type="button" class="small ${canShareFile ? "" : "primary"}" id="copyOpen">Copy card &amp; open chat</button>` +
+      (share.length ? `<button type="button" class="primary small" id="shareFiles">Share to WhatsApp</button>` : "") +
+      `<button type="button" class="small ${share.length ? "" : "primary"}" id="manualSend">${onlyCard ? "Copy card" : "Download files"} &amp; open chat</button>` +
       `<button type="button" class="small" id="toastClose">Cancel</button></div>`,
     120000
   );
 
-  if (canShareFile) {
-    $("shareCard").onclick = async () => {
+  if (share.length) {
+    $("shareFiles").onclick = async () => {
       try {
-        await navigator.share({ files: [file], text });
+        await navigator.share({ files: share, text });
         $("toast").hidden = true;
         markSent(g);
+        if (manual.length) {
+          manual.forEach((f) => downloadBlob(f, f.name));
+          toast(`These files couldn't be shared, so they were downloaded. Attach them in ${who}'s chat with 📎:<ul class="steps">${fileList(manual)}</ul>`, 20000);
+        }
       } catch (err) {
-        if (err.name !== "AbortError") toast("Sharing didn't work here. Use <strong>Copy card &amp; open chat</strong> instead.");
+        if (err.name !== "AbortError") toast("Sharing didn't work here. Press <strong>Send</strong> again and choose the other option.");
       }
     };
   }
-  $("copyOpen").onclick = async () => {
-    let copied = false;
-    try {
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-      copied = true;
-    } catch (_) {
-      downloadBlob(blob, cardFileName(g));
+  $("manualSend").onclick = async () => {
+    if (onlyCard) {
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": files[0] })]);
+        openChatStep(g, text, `✅ <strong>Card copied.</strong> Open the chat and press <strong>${pasteKey()}</strong> to paste it, send it, then send the text.`);
+        return;
+      } catch (_) {}
     }
-    // Opened from a second click so the browser doesn't block it as a pop-up.
-    toast(
-      (copied
-        ? `✅ <strong>Card copied.</strong> Now open the chat and press <strong>${pasteKey()}</strong> to paste it.`
-        : `⬇️ <strong>Card downloaded.</strong> Now open the chat and attach it with 📎.`) +
-        `<div class="btns"><button type="button" class="primary small" id="openChat">Open ${who}'s chat</button></div>`,
-      120000
-    );
-    $("openChat").onclick = () => {
-      window.open(waLink(g.phone, text), "_blank", "noopener");
-      $("toast").hidden = true;
-      markSent(g);
-    };
+    files.forEach((f) => downloadBlob(f, f.name));
+    openChatStep(g, text,
+      `⬇️ <strong>Downloaded to your Downloads folder:</strong><ul class="steps">${fileList(files)}</ul>` +
+      `Open the chat, attach them with 📎 (or drag them in), then send the text.`);
   };
   $("toastClose").onclick = () => ($("toast").hidden = true);
 }
@@ -571,7 +705,9 @@ function render() {
   const cardMode = opts.sendMode === "card";
   $("linkCard").hidden = cardMode;
   $("bubbleCard").hidden = !cardMode;
-  $("bubbleNote").hidden = !cardMode || isPhone();
+  renderAttachments();
+  $("linkCard").hidden = cardMode || attachments.length > 0; // WhatsApp shows no link preview when files are attached
+  $("bubbleNote").hidden = !(cardMode || attachments.length) || isPhone();
   if (cardMode) {
     clearTimeout(bubbleTimer);
     bubbleTimer = setTimeout(() => {
@@ -589,6 +725,9 @@ function render() {
 // ---------- Wire up ----------
 load();
 loadPhoto();
+loadAttachments();
+$("attachBtn").onclick = () => $("attachFile").click();
+$("attachFile").onchange = (e) => { handleAttachFiles(e.target.files); e.target.value = ""; };
 FIELDS.forEach((f) => $(f).addEventListener("input", () => { render(); save(); }));
 $("cc").addEventListener("change", () => {
   guests.forEach((g) => (g.phone = normalizePhone(g.raw, $("cc").value)));

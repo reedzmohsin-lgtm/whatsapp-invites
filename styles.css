@@ -147,6 +147,19 @@ td.actions { text-align: right; white-space: nowrap; }
 .toast .steps { margin: 8px 0 0; padding-left: 20px; }
 .toast .steps li { margin-bottom: 4px; }
 .toast button:not(.primary) { background: transparent; color: var(--bg); border-color: color-mix(in srgb, var(--bg) 40%, transparent); }
+.toast .tstep { margin: 8px 0 0; }
+.toast ul.steps { margin: 6px 0; }
+
+/* Extra files */
+.files { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 8px; }
+.files li { display: grid; grid-template-columns: 48px 1fr auto; gap: 12px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 10px; }
+.files img, .files .ficon { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; display: grid; place-items: center; font-size: 24px; background: var(--bg); }
+.fname { display: grid; min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
+.fname small { color: var(--muted); font-size: 12px; }
+.bfiles { display: grid; gap: 4px; margin-bottom: 4px; }
+.bfile img { width: 100%; border-radius: 6px; display: block; }
+.bfile:not(:has(img)) { display: grid; grid-template-columns: 32px 1fr; gap: 8px; align-items: center; padding: 8px; border-radius: 6px; background: rgba(0,0,0,.06); font-size: 20px; }
+.bfile .fname small { color: inherit; opacity: .7; }
 .bubble-note { font-size: 12px; color: var(--muted); margin: 8px 0 0; text-align: right; }
 
 /* Guest page */

@@ -113,7 +113,24 @@
     </section>
 
     <section class="card">
-      <h2>4. Host &amp; settings</h2>
+      <h2>4. Extra files <span class="hint">(optional)</span></h2>
+      <p class="muted" style="margin-top:0">Add photos, a poster, a PDF agenda or a video to send with every invite.</p>
+      <div class="btns" style="margin-top:0">
+        <button type="button" id="attachBtn">Add files</button>
+        <input id="attachFile" type="file" multiple hidden
+          accept="image/*,video/*,audio/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" />
+      </div>
+      <p id="attachEmpty" class="muted" style="margin-bottom:0">No files added.</p>
+      <ul id="attachList" class="files"></ul>
+      <p class="note">
+        Files are sent through the <strong>Share menu</strong>, which sends them with the text in one go.
+        Photos, videos and PDFs work best. If a file type can't be shared, it's downloaded for you to attach with 📎.
+        Files stay in this browser only.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>5. Host &amp; settings</h2>
       <div class="row">
         <div>
           <label for="hostName">Your name</label>
@@ -141,7 +158,7 @@
     </section>
 
     <section class="card">
-      <h2>5. Guests</h2>
+      <h2>6. Guests</h2>
       <div class="btns">
         <button id="pickContacts" type="button">Pick from Contacts</button>
         <button id="uploadBtn" type="button">Upload CSV / vCard</button>
@@ -176,11 +193,12 @@
     </section>
 
     <section class="card">
-      <h2>6. Preview &amp; send</h2>
+      <h2>7. Preview &amp; send</h2>
       <p class="muted" style="margin-top:0">How it looks in WhatsApp for <strong id="previewName">a guest</strong>:</p>
       <div class="wa">
         <div class="bubble">
           <img id="bubbleCard" alt="Invitation card" hidden />
+          <div id="bubbleFiles" class="bfiles" hidden></div>
           <div id="linkCard" class="linkcard">
             <img src="og-image.jpg" alt="" />
             <div><strong>You're Invited</strong><small>Event details · Add to calendar · RSVP</small></div>
@@ -189,7 +207,7 @@
         </div>
       </div>
       <p id="bubbleNote" class="bubble-note" hidden>
-        WhatsApp links can't attach images, so when you press Send you'll get a choice: share the card with the Share menu, or paste it into the chat.
+        WhatsApp links can't attach files, so when you press Send you'll get a choice: send everything with the Share menu, or attach it in the chat yourself.
       </p>
       <div class="btns">
         <button id="sendNext" type="button" class="primary">Send to next guest</button>
