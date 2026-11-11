@@ -198,11 +198,22 @@ function downloadBlob(blob, name) {
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
 
+// Picking a photo or theme only matters if the card is sent, so switch to "Card + text".
+function useCardMode() {
+  if (opts.sendMode === "card") return;
+  opts.sendMode = "card";
+  toast("Switched to <strong>Card + text</strong> so your card is included in the invite.");
+}
+
 function setPhotoFromUrl(url, persist) {
   const img = new Image();
   img.onload = () => {
     photo = img;
-    if (persist) { try { localStorage.setItem(PHOTO_KEY, url); } catch (_) {} }
+    if (persist) {
+      try { localStorage.setItem(PHOTO_KEY, url); } catch (_) {}
+      useCardMode();
+      save();
+    }
     render();
   };
   img.src = url;
@@ -342,6 +353,16 @@ async function pickContacts() {
 
 // ---------- Sending ----------
 const isPhone = () => matchMedia("(pointer: coarse)").matches;
+const pasteKey = () => (/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘V" : "Ctrl+V");
+
+let toastTimer = null;
+function toast(html, ms = 6000) {
+  const el = $("toast");
+  el.innerHTML = html;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (el.hidden = true), ms);
+}
 
 function markSent(g) {
   g.sent = true;
@@ -365,24 +386,47 @@ async function sendTo(i) {
     return;
   }
 
-  const blob = await getCardBlob(g);
-  const file = new File([blob], cardFileName(g), { type: "image/png" });
-  if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
+  const key = cardKey(g);
 
-  if (isPhone() && navigator.canShare && navigator.canShare({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file], text });
-      markSent(g);
-    } catch (err) {
-      if (err.name === "NotAllowedError") alert("Tap Send again to open the Share menu.");
-      // AbortError: they closed the Share menu, so leave it unsent.
+  if (isPhone() && navigator.canShare) {
+    // The Share menu must open straight from the tap, so use the card prepared in advance when we can.
+    const blob = cardCache.get(key) || (await getCardBlob(g));
+    const file = new File([blob], cardFileName(g), { type: "image/png" });
+    if (navigator.canShare({ files: [file] })) {
+      if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
+      try {
+        await navigator.share({ files: [file], text });
+        markSent(g);
+      } catch (err) {
+        if (err.name === "NotAllowedError") toast("Tap <strong>Send</strong> again to open the Share menu.");
+        // AbortError: they closed the Share menu, so leave it unsent.
+      }
+      return;
     }
-    return;
   }
-  // Computer (or no file sharing): download the card and open the chat with the text.
-  downloadBlob(blob, cardFileName(g));
-  window.open(waLink(g.phone, text), "_blank", "noopener");
-  markSent(g);
+
+  // Computer: step 1 copies the card image; step 2 (a button in the pop-up) opens the guest's chat
+  // with the text filled in. Two clicks, because browsers block a new window opened after the copy.
+  let copied = false;
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": getCardBlob(g) })]);
+    copied = true;
+  } catch (_) {
+    downloadBlob(await getCardBlob(g), cardFileName(g));
+  }
+  const how = copied
+    ? `🖼️ <strong>Card copied.</strong> Open the chat, press <strong>${pasteKey()}</strong> to attach the card, then send.`
+    : `🖼️ <strong>Card downloaded.</strong> Open the chat, attach it with the 📎 button, then send.`;
+  toast(
+    `${how}<br><small>The invite text is already typed in the chat. If it isn't added as the card's caption, send it as well.</small>` +
+      `<div class="btns"><button type="button" class="primary small" id="openChat">Open WhatsApp chat with ${escapeHtml(firstName(g.name) || "guest")}</button></div>`,
+    60000
+  );
+  $("openChat").onclick = () => {
+    window.open(waLink(g.phone, text), "_blank", "noopener");
+    $("toast").hidden = true;
+    markSent(g);
+  };
 }
 
 function sendNext() {
@@ -441,7 +485,7 @@ function renderStyleControls() {
     b.title = photo ? "Remove the photo to use a theme" : t.label;
     b.disabled = !!photo;
     b.style.background = `linear-gradient(135deg, ${t.bg[0]}, ${t.bg[1]})`;
-    b.onclick = () => { opts.theme = key; cardCache.clear(); render(); save(); };
+    b.onclick = () => { opts.theme = key; useCardMode(); cardCache.clear(); render(); save(); };
     $("themeSwatches").appendChild(b);
   });
   document.querySelectorAll('input[name="layout"]').forEach((r) => (r.checked = r.value === opts.layout));
@@ -496,7 +540,10 @@ function render() {
   $("bubbleCard").hidden = !cardMode;
   if (cardMode) {
     clearTimeout(bubbleTimer);
-    bubbleTimer = setTimeout(() => ($("bubbleCard").src = $("cardCanvas").toDataURL("image/jpeg", 0.7)), 200);
+    bubbleTimer = setTimeout(() => {
+      $("bubbleCard").src = $("cardCanvas").toDataURL("image/jpeg", 0.7);
+      if (first.phone) getCardBlob(first); // prepare the next card so sharing opens on the first tap
+    }, 200);
   }
 
   const valid = guests.filter((g) => g.phone).length;
