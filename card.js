@@ -154,7 +154,7 @@ function renderCard(canvas, opts) {
   drawDivider(ctx, cx, y, 360, accent);
   y += 100;
 
-  const parts = ev.s ? formatParts(ev.s, ev.e) : { date: "Date to be confirmed", time: "" };
+  const parts = ev.s ? formatParts(ev.s, ev.e, ev.f) : { date: "Date to be confirmed", time: "" };
   ctx.fillStyle = ink;
   ctx.font = `600 50px ${SANS}`;
   wrapLines(ctx, parts.date, maxW, 2).forEach((l) => { ctx.fillText(l, cx, y); y += 64; });

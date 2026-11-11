@@ -5,7 +5,7 @@ const STORE_KEY = "wa-invites-v1";
 const PHOTO_KEY = "wa-invites-photo";
 
 let guests = []; // { name, raw, phone, sent }
-let opts = { style: "classic", layout: "clean", sendMode: "text", theme: "emerald", personalize: true };
+let opts = { style: "classic", layout: "clean", sendMode: "text", theme: "emerald", personalize: true, timeFormat: "12" };
 let photo = null; // HTMLImageElement or null
 let attachments = []; // { id, file, url }
 
@@ -186,6 +186,7 @@ function currentEvent() {
     m: $("map").value.trim(),
     h: normalizePhone($("hostPhone").value, $("cc").value),
     n: $("hostName").value.trim(),
+    f: opts.timeFormat === "24" ? "24" : "12",
   };
 }
 
@@ -224,7 +225,7 @@ function buildMessage(guest) {
   const greeting = personalize($("greeting").value.trim(), name);
   const body = personalize(ev.b, name);
   const closing = personalize($("closing").value.trim(), name);
-  const parts = ev.s ? formatParts(ev.s, ev.e) : null;
+  const parts = ev.s ? formatParts(ev.s, ev.e, ev.f) : null;
   const invite = inviteUrl(ev, name);
   const L = [];
 
@@ -657,6 +658,7 @@ function renderStyleControls() {
   });
   document.querySelectorAll('input[name="layout"]').forEach((r) => (r.checked = r.value === opts.layout));
   document.querySelectorAll('input[name="sendMode"]').forEach((r) => (r.checked = r.value === opts.sendMode));
+  document.querySelectorAll('input[name="timeFormat"]').forEach((r) => (r.checked = r.value === opts.timeFormat));
   $("personalize").checked = opts.personalize;
   $("photoClear").hidden = !photo;
 }
@@ -738,6 +740,9 @@ document.querySelectorAll('input[name="layout"]').forEach((r) =>
 );
 document.querySelectorAll('input[name="sendMode"]').forEach((r) =>
   r.addEventListener("change", () => { opts.sendMode = r.value; render(); save(); })
+);
+document.querySelectorAll('input[name="timeFormat"]').forEach((r) =>
+  r.addEventListener("change", () => { opts.timeFormat = r.value; render(); save(); })
 );
 $("personalize").addEventListener("change", (e) => { opts.personalize = e.target.checked; render(); save(); });
 $("photoBtn").onclick = () => $("photoFile").click();

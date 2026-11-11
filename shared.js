@@ -21,11 +21,18 @@ function toUtcStamp(date) {
   return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
 }
 
-function formatWhen(startIso, endIso) {
+// Times in a fixed format so they never look ambiguous: "7:00 AM" (12-hour) or "07:00" (24-hour).
+function formatTime(date, fmt) {
+  const h = date.getHours(), m = String(date.getMinutes()).padStart(2, "0");
+  if (fmt === "24") return `${String(h).padStart(2, "0")}:${m}`;
+  return `${h % 12 || 12}:${m} ${h < 12 ? "AM" : "PM"}`;
+}
+
+function formatWhen(startIso, endIso, fmt) {
   const s = new Date(startIso);
   const e = endIso ? new Date(endIso) : null;
   const day = s.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-  const t = (d) => d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const t = (d) => formatTime(d, fmt);
   if (!e) return `${day}, ${t(s)}`;
   const sameDay = s.toDateString() === e.toDateString();
   return sameDay
@@ -34,12 +41,12 @@ function formatWhen(startIso, endIso) {
 }
 
 // Short date line + time line, e.g. { date: "Sat, 5 Dec 2026", time: "12:00 PM – 4:00 PM" }.
-function formatParts(startIso, endIso) {
+function formatParts(startIso, endIso, fmt) {
   const s = new Date(startIso);
   const e = endIso ? new Date(endIso) : null;
   const d = (x, year = true) =>
     x.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", ...(year ? { year: "numeric" } : {}) });
-  const t = (x) => x.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const t = (x) => formatTime(x, fmt);
   if (!e) return { date: d(s), time: t(s) };
   if (s.toDateString() === e.toDateString()) return { date: d(s), time: `${t(s)} – ${t(e)}` };
   return { date: `${d(s, false)} – ${d(e)}`, time: `${t(s)} – ${t(e)}` };

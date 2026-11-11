@@ -78,7 +78,7 @@
       $("title").textContent = ev.t;
       $("body").textContent = ev.b || "";
       $("from").textContent = ev.n ? `${ev.n} invites you to` : "You're invited to";
-      $("when").textContent = ev.s ? formatWhen(ev.s, ev.e) : "Date to be confirmed";
+      $("when").textContent = ev.s ? formatWhen(ev.s, ev.e, ev.f) : "Date to be confirmed";
 
       const map = mapUrl(ev);
       if (ev.l) $("where").textContent = ev.l;
