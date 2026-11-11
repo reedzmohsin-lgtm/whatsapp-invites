@@ -137,7 +137,8 @@ function googleCalendarUrl(ev) {
 
 // ---------- WhatsApp ----------
 function waLink(phoneDigits, text) {
-  return `https://wa.me/${phoneDigits}?text=${encodeURIComponent(text)}`;
+  // api.whatsapp.com/send keeps emojis intact; wa.me links can garble them (shown as �) in the desktop app.
+  return `https://api.whatsapp.com/send?phone=${phoneDigits}&text=${encodeURIComponent(text)}`;
 }
 
 function rsvpLink(ev, answer, guestName) {

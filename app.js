@@ -405,28 +405,61 @@ async function sendTo(i) {
     }
   }
 
-  // Computer: step 1 copies the card image; step 2 (a button in the pop-up) opens the guest's chat
-  // with the text filled in. Two clicks, because browsers block a new window opened after the copy.
-  let copied = false;
-  try {
-    await navigator.clipboard.write([new ClipboardItem({ "image/png": getCardBlob(g) })]);
-    copied = true;
-  } catch (_) {
-    downloadBlob(await getCardBlob(g), cardFileName(g));
-  }
-  const how = copied
-    ? `🖼️ <strong>Card copied.</strong> Open the chat, press <strong>${pasteKey()}</strong> to attach the card, then send.`
-    : `🖼️ <strong>Card downloaded.</strong> Open the chat, attach it with the 📎 button, then send.`;
+  // Computer: a WhatsApp link can only carry text, so the card has to go another way.
+  // Each option is its own button, because sharing and opening a window must start from a click.
+  const who = escapeHtml(firstName(g.name) || "this guest");
+  const blob = await getCardBlob(g);
+  const file = new File([blob], cardFileName(g), { type: "image/png" });
+  const canShareFile = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+
   toast(
-    `${how}<br><small>The invite text is already typed in the chat. If it isn't added as the card's caption, send it as well.</small>` +
-      `<div class="btns"><button type="button" class="primary small" id="openChat">Open WhatsApp chat with ${escapeHtml(firstName(g.name) || "guest")}</button></div>`,
-    60000
+    `<strong>Send the card to ${who}</strong>` +
+      (canShareFile
+        ? `<ol class="steps"><li><strong>Share card to WhatsApp</strong> sends the card <em>and</em> the text together. In the Share menu choose WhatsApp, then pick ${who}.</li></ol>`
+        : "") +
+      `<ol class="steps" ${canShareFile ? 'start="2"' : ""}><li><strong>Copy card &amp; open chat</strong> opens ${who}'s chat with the text typed in. ` +
+      `Press <strong>${pasteKey()}</strong> in the chat to paste the card, send it, then send the text.</li></ol>` +
+      `<div class="btns">` +
+      (canShareFile ? `<button type="button" class="primary small" id="shareCard">Share card to WhatsApp</button>` : "") +
+      `<button type="button" class="small ${canShareFile ? "" : "primary"}" id="copyOpen">Copy card &amp; open chat</button>` +
+      `<button type="button" class="small" id="toastClose">Cancel</button></div>`,
+    120000
   );
-  $("openChat").onclick = () => {
-    window.open(waLink(g.phone, text), "_blank", "noopener");
-    $("toast").hidden = true;
-    markSent(g);
+
+  if (canShareFile) {
+    $("shareCard").onclick = async () => {
+      try {
+        await navigator.share({ files: [file], text });
+        $("toast").hidden = true;
+        markSent(g);
+      } catch (err) {
+        if (err.name !== "AbortError") toast("Sharing didn't work here. Use <strong>Copy card &amp; open chat</strong> instead.");
+      }
+    };
+  }
+  $("copyOpen").onclick = async () => {
+    let copied = false;
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      copied = true;
+    } catch (_) {
+      downloadBlob(blob, cardFileName(g));
+    }
+    // Opened from a second click so the browser doesn't block it as a pop-up.
+    toast(
+      (copied
+        ? `✅ <strong>Card copied.</strong> Now open the chat and press <strong>${pasteKey()}</strong> to paste it.`
+        : `⬇️ <strong>Card downloaded.</strong> Now open the chat and attach it with 📎.`) +
+        `<div class="btns"><button type="button" class="primary small" id="openChat">Open ${who}'s chat</button></div>`,
+      120000
+    );
+    $("openChat").onclick = () => {
+      window.open(waLink(g.phone, text), "_blank", "noopener");
+      $("toast").hidden = true;
+      markSent(g);
+    };
   };
+  $("toastClose").onclick = () => ($("toast").hidden = true);
 }
 
 function sendNext() {
@@ -538,6 +571,7 @@ function render() {
   const cardMode = opts.sendMode === "card";
   $("linkCard").hidden = cardMode;
   $("bubbleCard").hidden = !cardMode;
+  $("bubbleNote").hidden = !cardMode || isPhone();
   if (cardMode) {
     clearTimeout(bubbleTimer);
     bubbleTimer = setTimeout(() => {
