@@ -21,12 +21,22 @@
 
       <div class="row">
         <div>
-          <label for="start">Starts</label>
-          <input id="start" type="datetime-local" />
+          <label for="startDate">Start date</label>
+          <input id="startDate" type="date" class="picker" />
         </div>
         <div>
-          <label for="end">Ends <span class="hint">(optional)</span></label>
-          <input id="end" type="datetime-local" />
+          <label for="startTime">Start time</label>
+          <input id="startTime" type="time" class="picker" step="300" />
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="endDate">End date <span class="hint">(optional)</span></label>
+          <input id="endDate" type="date" class="picker" />
+        </div>
+        <div>
+          <label for="endTime">End time <span class="hint">(optional)</span></label>
+          <input id="endTime" type="time" class="picker" step="300" />
         </div>
       </div>
 

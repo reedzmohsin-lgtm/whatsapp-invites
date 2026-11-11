@@ -58,6 +58,9 @@ input, textarea, select {
   font: inherit;
 }
 textarea { min-height: 110px; resize: vertical; }
+input.picker { cursor: pointer; min-height: 44px; }
+input.picker::-webkit-calendar-picker-indicator { cursor: pointer; opacity: .8; }
+@media (prefers-color-scheme: dark) { input.picker { color-scheme: dark; } }
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
 .btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }

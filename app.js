@@ -1,6 +1,6 @@
 // Organizer page logic.
 const $ = (id) => document.getElementById(id);
-const FIELDS = ["title", "body", "start", "end", "location", "map", "hostName", "hostPhone", "cc", "baseUrl"];
+const FIELDS = ["title", "body", "startDate", "startTime", "endDate", "endTime", "location", "map", "hostName", "hostPhone", "cc", "baseUrl"];
 const STORE_KEY = "wa-invites-v1";
 
 let guests = []; // { name, raw, phone, sent }
@@ -18,6 +18,12 @@ function load() {
   try {
     const data = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
     if (!data) return;
+    // Older versions stored "start"/"end" as one date-time value (2026-12-05T12:00).
+    for (const k of ["start", "end"]) {
+      if (typeof data[k] === "string" && data[k].includes("T") && !data[k + "Date"]) {
+        [data[k + "Date"], data[k + "Time"]] = data[k].split("T");
+      }
+    }
     FIELDS.forEach((f) => {
       if (typeof data[f] === "string") $(f).value = data[f];
     });
@@ -27,12 +33,16 @@ function load() {
 
 // ---------- Event ----------
 function currentEvent() {
-  const toIso = (v) => (v ? new Date(v).toISOString() : "");
+  const sd = $("startDate").value, st = $("startTime").value;
+  const ed = $("endDate").value || sd, et = $("endTime").value;
+  const s = sd ? new Date(`${sd}T${st || "00:00"}`) : null;
+  let e = ed && et ? new Date(`${ed}T${et}`) : null;
+  if (s && e && e <= s) e = null; // ignore an end that is not after the start
   return {
     t: $("title").value.trim(),
     b: $("body").value.trim(),
-    s: toIso($("start").value),
-    e: toIso($("end").value),
+    s: s ? s.toISOString() : "",
+    e: e ? e.toISOString() : "",
     l: $("location").value.trim(),
     m: $("map").value.trim(),
     h: normalizePhone($("hostPhone").value, $("cc").value),
@@ -84,7 +94,8 @@ function validate() {
   const ev = currentEvent();
   const problems = [];
   if (!ev.t) problems.push("a title");
-  if (!ev.s) problems.push("a start time");
+  if (!$("startDate").value) problems.push("a start date");
+  if (!$("startTime").value) problems.push("a start time");
   if (!ev.h) problems.push("your WhatsApp number");
   return problems;
 }
@@ -283,6 +294,18 @@ $("cc").addEventListener("change", () => {
   guests.forEach((g) => (g.phone = normalizePhone(g.raw, $("cc").value)));
   render(); save();
 });
+// Open the calendar / clock as soon as a date or time box is clicked.
+document.querySelectorAll("input.picker").forEach((el) =>
+  el.addEventListener("click", () => { try { el.showPicker(); } catch (_) {} })
+);
+// End date can't be before the start date, and defaults to the same day.
+$("startDate").addEventListener("change", () => {
+  $("endDate").min = $("startDate").value;
+  if (!$("endDate").value || $("endDate").value < $("startDate").value) $("endDate").value = $("startDate").value;
+  render(); save();
+});
+$("startDate").min = new Date().toISOString().slice(0, 10);
+$("endDate").min = $("startDate").value || $("startDate").min;
 $("pickContacts").onclick = pickContacts;
 $("uploadBtn").onclick = () => $("file").click();
 $("file").onchange = (e) => { handleFiles([...e.target.files]); e.target.value = ""; };
