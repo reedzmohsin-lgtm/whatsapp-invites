@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>You're Invited</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="wrap invite">
+    <div id="error" class="card" hidden>
+      <h2>Invite not found</h2>
+      <p class="muted">This invite link looks incomplete. Please open the full link from the WhatsApp message.</p>
+    </div>
+
+    <div id="content" hidden>
+      <section class="card">
+        <p class="muted" id="from" style="margin:0 0 4px"></p>
+        <h1 id="title"></h1>
+        <p class="body" id="body"></p>
+      </section>
+
+      <section class="card">
+        <div class="facts">
+          <div><span>🗓️</span><span id="when"></span></div>
+          <div id="whereRow"><span>📍</span><span id="where"></span></div>
+        </div>
+        <div class="stack" style="margin-top:16px">
+          <a id="mapBtn" class="btn" target="_blank" rel="noopener">Open in Maps</a>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Add to your calendar</h2>
+        <div class="stack">
+          <button id="icsBtn" type="button">Apple / Outlook calendar (.ics)</button>
+          <a id="gcalBtn" class="btn" target="_blank" rel="noopener">Google Calendar</a>
+        </div>
+      </section>
+
+      <section class="card" id="rsvpCard">
+        <h2>Will you come?</h2>
+        <p class="muted" style="margin-top:0">Your answer is sent to <span id="hostLabel">the host</span> on WhatsApp.</p>
+        <div class="stack">
+          <a id="rsvpYes" class="btn primary" target="_blank" rel="noopener">✅ Yes, I'll be there</a>
+          <a id="rsvpMaybe" class="btn" target="_blank" rel="noopener">🤔 Maybe</a>
+          <a id="rsvpNo" class="btn" target="_blank" rel="noopener">❌ Sorry, can't make it</a>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="shared.js"></script>
+  <script>
+    (function () {
+      const $ = (id) => document.getElementById(id);
+      const params = new URLSearchParams(location.hash.slice(1));
+      let ev;
+      try {
+        ev = decodeEvent(params.get("e") || "");
+      } catch (_) {}
+      if (!ev || !ev.t) {
+        $("error").hidden = false;
+        return;
+      }
+      const guest = params.get("g") || "";
+      document.title = ev.t;
+      $("content").hidden = false;
+      $("title").textContent = ev.t;
+      $("body").textContent = ev.b || "";
+      $("from").textContent = ev.n ? `${ev.n} invites you to` : "You're invited to";
+      $("when").textContent = ev.s ? formatWhen(ev.s, ev.e) : "Date to be confirmed";
+
+      const map = mapUrl(ev);
+      if (ev.l) $("where").textContent = ev.l;
+      else $("whereRow").hidden = true;
+      if (map) $("mapBtn").href = map;
+      else $("mapBtn").hidden = true;
+
+      $("icsBtn").onclick = () => downloadIcs(ev);
+      $("gcalBtn").href = googleCalendarUrl(ev);
+
+      if (ev.h) {
+        $("hostLabel").textContent = ev.n || "the host";
+        $("rsvpYes").href = rsvpLink(ev, "Yes, I'll be there", guest);
+        $("rsvpMaybe").href = rsvpLink(ev, "Maybe", guest);
+        $("rsvpNo").href = rsvpLink(ev, "Sorry, can't make it", guest);
+      } else {
+        $("rsvpCard").hidden = true;
+      }
+    })();
+  </script>
+</body>
+</html>

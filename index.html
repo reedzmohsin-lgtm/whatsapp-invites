@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WhatsApp Event Invites</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <h1>WhatsApp Event Invites</h1>
+    <p class="sub">Create an event, pick guests and send each one a personal WhatsApp invite.</p>
+
+    <section class="card">
+      <h2>1. Event</h2>
+      <label for="title">Title</label>
+      <input id="title" placeholder="Hari Raya Open House" />
+
+      <label for="body">Message <span class="hint">— use {name} to insert the guest's name</span></label>
+      <textarea id="body">Hi {name}, you're invited! It would be lovely to see you there.</textarea>
+
+      <div class="row">
+        <div>
+          <label for="start">Starts</label>
+          <input id="start" type="datetime-local" />
+        </div>
+        <div>
+          <label for="end">Ends <span class="hint">(optional)</span></label>
+          <input id="end" type="datetime-local" />
+        </div>
+      </div>
+
+      <label for="location">Venue / address</label>
+      <input id="location" placeholder="12 Jalan Example, City" />
+
+      <label for="map">Map link or coordinates <span class="hint">(optional — otherwise the address is used)</span></label>
+      <input id="map" placeholder="https://maps.app.goo.gl/…  or  3.1390,101.6869" />
+    </section>
+
+    <section class="card">
+      <h2>2. Host &amp; settings</h2>
+      <div class="row">
+        <div>
+          <label for="hostName">Your name</label>
+          <input id="hostName" placeholder="Host name" />
+        </div>
+        <div>
+          <label for="hostPhone">Your WhatsApp number <span class="hint">— RSVPs come here</span></label>
+          <input id="hostPhone" placeholder="+60 12 345 6789" />
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="cc">Default country code <span class="hint">— for numbers starting with 0</span></label>
+          <input id="cc" placeholder="60" inputmode="numeric" />
+        </div>
+        <div>
+          <label for="baseUrl">Public site address <span class="hint">— where this app is hosted</span></label>
+          <input id="baseUrl" placeholder="https://yourname.github.io/whatsapp-invites/" />
+        </div>
+      </div>
+      <div id="baseWarn" class="note" hidden>
+        This app is running on your own computer, so guests can't open the invite page (calendar, map and RSVP buttons) yet.
+        Put the app online (see README), enter the address above, and the invite links will work.
+        The Google Calendar and map links in the message work either way.
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>3. Guests</h2>
+      <div class="btns">
+        <button id="pickContacts" type="button">Pick from Contacts</button>
+        <button id="uploadBtn" type="button">Upload CSV / vCard</button>
+        <input id="file" type="file" accept=".csv,.vcf,.vcard,.txt,text/csv,text/vcard" multiple hidden />
+        <button id="clearGuests" type="button" class="small" style="margin-left:auto">Clear list</button>
+      </div>
+      <p id="pickerNote" class="note" hidden>
+        Picking from Contacts only works in Chrome on Android. On iPhone or a computer, export your contacts as a
+        vCard (.vcf) or CSV file and upload it. On a Mac: Contacts → select contacts → File → Export → Export vCard.
+      </p>
+
+      <div class="row" style="margin-top:12px">
+        <div>
+          <label for="addName">Add one guest</label>
+          <input id="addName" placeholder="Name" />
+        </div>
+        <div>
+          <label for="addPhone">&nbsp;</label>
+          <div style="display:flex;gap:8px">
+            <input id="addPhone" placeholder="Phone number" />
+            <button id="addBtn" type="button">Add</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;overflow-x:auto">
+        <table>
+          <thead><tr><th>Name</th><th>WhatsApp number</th><th></th></tr></thead>
+          <tbody id="guestRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>4. Preview &amp; send</h2>
+      <p class="muted" style="margin-top:0">Preview for <strong id="previewName">the first guest</strong>:</p>
+      <div id="preview" class="preview"></div>
+      <div class="btns">
+        <button id="sendNext" type="button" class="primary">Send to next guest</button>
+        <button id="dlIcs" type="button">Download .ics</button>
+        <button id="resetSent" type="button">Reset sent status</button>
+      </div>
+      <p class="note">
+        Each invite opens WhatsApp with the message filled in. Tap <strong>Send</strong> in WhatsApp, then come back here
+        for the next guest. To attach the calendar file as well, download the .ics and send it in the same chat.
+      </p>
+      <p id="progress" class="muted"></p>
+    </section>
+  </div>
+
+  <script src="shared.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
